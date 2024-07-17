@@ -17,14 +17,24 @@ export function reframed(
 	container: HTMLElement;
 	ready: Promise<void>;
 } {
+	const reframeMetadata: reframeMetadata = {
+		iframeDocumentReadyState: "loading",
+	};
+
 	// create the reframed container
-	const reframedContainer =
+	const reframedContainer = (
 		"container" in options
 			? options.container
-			: document.createElement(options.containerTagName);
-	const reframedContainerShadowRoot =
+			: document.createElement(options.containerTagName)
+	) as ReframedContainer;
+
+	const reframedContainerShadowRoot = Object.assign(
 		reframedContainer.shadowRoot ??
-		reframedContainer.attachShadow({ mode: "open" });
+			reframedContainer.attachShadow({ mode: "open" }),
+		{
+			reframeMetadata,
+		}
+	);
 
 	// create the iframe
 	const iframe = document.createElement("iframe");
@@ -64,7 +74,22 @@ export function reframed(
 	return {
 		iframe,
 		container: reframedContainer,
-		ready: Promise.all([monkeyPatchPromise, ready]).then(() => {}),
+		ready: Promise.all([monkeyPatchPromise, ready]).then(() => {
+			reframedContainer.shadowRoot.reframeMetadata.iframeDocumentReadyState =
+				"interactive";
+			reframedContainer.shadowRoot!.dispatchEvent(
+				new Event("readystatechange")
+			);
+			// TODO: this should be called when reframed async loading activities finish
+			//        (note: the 2s delay is completely arbitrary, this is a very temporary solution anyways)
+			setTimeout(() => {
+				reframedContainer.shadowRoot.reframeMetadata.iframeDocumentReadyState =
+					"complete";
+				reframedContainer.shadowRoot.dispatchEvent(
+					new Event("readystatechange")
+				);
+			}, 2_000);
+		}),
 	};
 }
 
@@ -134,6 +159,9 @@ async function reframeFromTarget(
 			if (scriptType) {
 				script.setAttribute("type", scriptType);
 			}
+			if (script.id === "qwikloader") {
+				script.defer = true;
+			}
 
 			assert(
 				!!(
@@ -162,7 +190,7 @@ async function reframeFromTarget(
  */
 function monkeyPatchIFrameDocument(
 	iframeDocument: Document,
-	shadowRoot: ShadowRoot
+	shadowRoot: ReframeShadowRoot
 ): void {
 	const iframeDocumentPrototype = Object.getPrototypeOf(
 		Object.getPrototypeOf(iframeDocument)
@@ -191,6 +219,12 @@ function monkeyPatchIFrameDocument(
 			},
 			set: function (newTitle: string) {
 				updatedIframeTitle = newTitle;
+			},
+		},
+
+		readyState: {
+			get() {
+				return shadowRoot.reframeMetadata.iframeDocumentReadyState;
 			},
 		},
 
@@ -305,6 +339,8 @@ function monkeyPatchIFrameDocument(
 			},
 		},
 	} satisfies Record<keyof Document, any>);
+
+	iframeWindow.IntersectionObserver = mainWindow.IntersectionObserver;
 
 	const domCreateProperties: (keyof Pick<
 		Document,
@@ -517,3 +553,21 @@ function isReframedDocument(
 ): document is ReframedDocument {
 	return "unreframedBody" in document;
 }
+
+type reframeMetadata = {
+	/**
+	 * Indicates what the value the iframe's document readyState should be.
+	 *
+	 * Note that we can't simply monkey patch this to the main document (since the iframe needs to have its own behavior regarding this state),
+	 * so we need to directly manage this state ourselves.
+	 */
+	iframeDocumentReadyState: DocumentReadyState;
+};
+
+type ReframeShadowRoot = ShadowRoot & {
+	reframeMetadata: reframeMetadata;
+};
+
+type ReframedContainer = HTMLElement & {
+	shadowRoot: ReframeShadowRoot;
+};
