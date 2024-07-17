@@ -39,8 +39,13 @@ export interface FragmentConfig {
 	onSsrFetchError?: (
 		req: RequestInfo,
 		failedResOrError: Response | unknown
-	) => Response | Promise<Response>;
+	) => ssrFetchErrorResponse | Promise<ssrFetchErrorResponse>;
 }
+
+type ssrFetchErrorResponse = {
+	response: Response;
+	global?: boolean;
+};
 
 type FragmentGatewayConfig = {
 	prePiercingStyles?: string;

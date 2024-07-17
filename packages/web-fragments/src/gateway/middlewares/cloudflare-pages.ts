@@ -105,10 +105,16 @@ export function getMiddleware(
 
 				if (fragmentFailedResOrError) {
 					if (matchedFragment.onSsrFetchError) {
-						fragmentRes = await matchedFragment.onSsrFetchError(
+						const { response, global } = await matchedFragment.onSsrFetchError(
 							fragmentReq,
 							fragmentFailedResOrError
 						);
+
+						if (global) {
+							return response;
+						}
+
+						fragmentRes = response;
 					} else {
 						fragmentRes = new Response(
 							mode === "development"

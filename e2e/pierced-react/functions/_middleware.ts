@@ -28,11 +28,22 @@ const getGatewayMiddleware: ((devMode: boolean) => PagesFunction) & {
 		routePatterns: ["/remix-page", "/_fragment/remix/:_*"],
 		// Note: the pierced-react-remix-fragment has to be available on port 3000
 		upstream: "http://localhost:3000",
-		onSsrFetchError: () => {
-			return new Response(
-				"<p id='remix-fragment-not-found'><style>#remix-fragment-not-found { color: red; font-size: 2rem; }</style>Remix fragment not found</p>",
-				{ headers: [["content-type", "text/html"]] }
-			);
+		onSsrFetchError: (_, fragmentResponse) => {
+			if (fragmentResponse instanceof Response) {
+				const response = handleSsrFragmentFetchNoAuth(fragmentResponse);
+				if (response) {
+					return {
+						global: true,
+						response,
+					};
+				}
+			}
+			return {
+				response: new Response(
+					"<p id='remix-fragment-not-found'><style>#remix-fragment-not-found { color: red; font-size: 2rem; }</style>Remix fragment not found</p>",
+					{ headers: [["content-type", "text/html"]] }
+				),
+			};
 		},
 	});
 
@@ -42,11 +53,22 @@ const getGatewayMiddleware: ((devMode: boolean) => PagesFunction) & {
 		routePatterns: ["/qwik-page", "/_fragment/qwik/:_*"],
 		// Note: the pierced-react-qwik-fragment has to be available on port 8123
 		upstream: "http://localhost:8123",
-		onSsrFetchError: () => {
-			return new Response(
-				"<p id='qwik-fragment-not-found'><style>#qwik-fragment-not-found { color: red; font-size: 2rem; }</style>Qwik fragment not found</p>",
-				{ headers: [["content-type", "text/html"]] }
-			);
+		onSsrFetchError: (_, fragmentResponse) => {
+			if (fragmentResponse instanceof Response) {
+				const response = handleSsrFragmentFetchNoAuth(fragmentResponse);
+				if (response) {
+					return {
+						global: true,
+						response,
+					};
+				}
+			}
+			return {
+				response: new Response(
+					"<p id='qwik-fragment-not-found'><style>#qwik-fragment-not-found { color: red; font-size: 2rem; }</style>Qwik fragment not found</p>",
+					{ headers: [["content-type", "text/html"]] }
+				),
+			};
 		},
 	});
 
@@ -56,6 +78,21 @@ const getGatewayMiddleware: ((devMode: boolean) => PagesFunction) & {
 	);
 	return getGatewayMiddleware._gatewayMiddleware;
 };
+
+function handleSsrFragmentFetchNoAuth(
+	fragmentResponse: Response
+): Response | null {
+	const noAuthRedirectLocation = "/login";
+	if ([400, 401, 403].includes(fragmentResponse.status)) {
+		return new Response(null, {
+			status: 302,
+			headers: new Headers({
+				Location: noAuthRedirectLocation,
+			}),
+		});
+	}
+	return null;
+}
 
 export const onRequest: PagesFunction<{ DEV_MODE?: boolean }> = async (
 	context
